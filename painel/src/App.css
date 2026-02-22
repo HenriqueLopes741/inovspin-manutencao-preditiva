@@ -1,0 +1,119 @@
+/* Configurações Gerais */
+:root {
+  --primary-color: #3182ce;
+  --bg-color: #f7fafc;
+  --card-bg: #ffffff;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: #2d3748;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+/* Layout Responsivo: GRID que vira COLUNA */
+.dashboard {
+  display: flex;
+  flex-wrap: wrap; /* Permite que os cards "pulem" para baixo se não houver espaço */
+  gap: 20px;
+  justify-content: center;
+}
+
+.card {
+  background: var(--card-bg);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  flex: 1 1 400px; /* Tenta manter 400px, mas cresce se houver espaço */
+  min-width: 300px; /* Largura mínima para não quebrar em celulares pequenos */
+  box-sizing: border-box;
+}
+
+/* O card do gráfico sempre ocupa 100% da largura disponível */
+.card-full {
+  flex: 1 1 100%;
+  margin-top: 20px;
+}
+
+/* Formulário e Inputs */
+.form-group {
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.form-group input {
+  padding: 10px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.btn-submit {
+  width: 100%;
+  padding: 12px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.btn-submit:hover {
+  background-color: #2b6cb0;
+}
+
+/* Estilização dos Status */
+.status-box {
+  padding: 15px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.status-normal { border-left: 8px solid #48bb78; background: #f0fff4; }
+.status-alerta { border-left: 8px solid #ecc94b; background: #fffff0; }
+.status-critico { border-left: 8px solid #f56565; background: #fff5f5; }
+
+.result-item {
+  margin: 10px 0;
+  line-height: 1.4;
+}
+
+/* Ajuste do Gráfico para ser fluido */
+.recharts-responsive-container {
+  max-width: 100%;
+}
+
+/* MEDIA QUERY: Ajustes finos para telas muito pequenas (celulares) */
+@media (max-width: 600px) {
+  .container {
+    padding: 10px;
+  }
+  
+  .card {
+    flex: 1 1 100%; /* Força cada card a ocupar a linha inteira */
+    padding: 15px;
+  }
+
+  h1 { font-size: 1.5rem; }
+}
