@@ -4,15 +4,15 @@ from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import os
 import sqlite3
+from datetime import datetime
 from contextlib import asynccontextmanager
 
-# Caminho do modelo e do Banco de Dados
+# Configurações de Caminho
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "../models/random_forest.pkl")
 DB_PATH = os.path.join(BASE_DIR, "historico.db")
 modelo = None
 
-# Função para criar o Banco de Dados se ele não existir
 def iniciar_banco():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -34,16 +34,15 @@ async def lifespan(app: FastAPI):
     global modelo
     if os.path.exists(MODEL_PATH):
         modelo = joblib.load(MODEL_PATH)
-    iniciar_banco() # Cria a tabela quando o servidor liga
+    iniciar_banco()
     yield
 
-app = FastAPI(title="InovSpin API", lifespan=lifespan)
+app = FastAPI(title="InovSpin API v2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
-    allow_credentials=True,
-    allow_methods=["*"], 
+    allow_origins=["*"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -59,80 +58,68 @@ def prever_falha(dados: DadosMotor):
     if modelo is None:
         raise HTTPException(status_code=500, detail="Modelo não carregado.")
     
-    entrada = [[
-        dados.horas_uso, 
-        dados.temperatura_c, 
-        dados.vibracao_mms, 
-        dados.corrente_a, 
-        dados.fator_potencia
-    ]]
-    
-    probabilidade = float(modelo.predict_proba(entrada)[0][1] * 100)
-    previsao = modelo.predict(entrada)[0]
-    
-    causa_raiz = "Parâmetros normais."
-    if probabilidade > 30:
-        causas = []
-        if dados.temperatura_c >= 75.0:
-            causas.append(f"Temperatura excessiva ({dados.temperatura_c}°C)")
-        if dados.vibracao_mms >= 5.0:
-            causas.append(f"Vibração anormal ({dados.vibracao_mms} mm/s)")
-        if dados.corrente_a >= 18.0:
-            causas.append(f"Sobrecarga ({dados.corrente_a} A)")
-            
-        if causas:
-            causa_raiz = " | ".join(causas)
-        else:
-            causa_raiz = "Desgaste geral por tempo de uso/fadiga."
+    # 1. Predição da IA
+    entrada = [[dados.horas_uso, dados.temperatura_c, dados.vibracao_mms, dados.corrente_a, dados.fator_potencia]]
+    prob_ia = float(modelo.predict_proba(entrada)[0][1] * 100)
 
-    if previsao == 1 or probabilidade > 70:
-        status = "🔴 RISCO CRÍTICO"
-        recomendacao = "Pare o motor IMEDIATAMENTE. Troque rolamentos e verifique o alinhamento."
-        roi = "Economia estimada de R$ 15.000,00 (evitando parada não programada)."
-    elif probabilidade > 30:
-        status = "🟡 ALERTA"
-        recomendacao = "Agende manutenção preventiva. Monitore a temperatura de perto."
-        roi = "Manutenção preventiva (R$ 1.500,00) recomendada para evitar custos."
+    # 2. MOTOR ESPECIALISTA (Define tudo de uma vez para evitar bugs)
+    t, v, c, fp = dados.temperatura_c, dados.vibracao_mms, dados.corrente_a, dados.fator_potencia
+
+    # Caso 1: CRÍTICO (Prioridade máxima)
+    if v >= 4.5 or t >= 85.0 or c >= 22.0:
+        res = {
+            "status": "🔴 RISCO CRÍTICO",
+            "risco": max(prob_ia, 95.0),
+            "causa": f"Severidade Técnica: {'Vibração' if v>=4.5 else 'Calor'} acima do limite ISO.",
+            "recomenda": "PARADA IMEDIATA. Realizar análise de vibração e check de isolamento térmico.",
+            "roi": "Evita quebra catastrófica. Economia estimada: R$ 15.000,00."
+        }
+    
+    # Caso 2: ALERTA
+    elif v >= 2.8 or t >= 70.0 or fp < 0.85:
+        res = {
+            "status": "🟡 ALERTA",
+            "risco": max(prob_ia, 55.0),
+            "causa": "Desvio de performance detectado (Baixa eficiência ou desgaste mecânico).",
+            "recomenda": "Agendar inspeção visual e lubrificação dos mancais em até 48h.",
+            "roi": "Prevenção de danos secundários. Economia estimada: R$ 1.500,00."
+        }
+
+    # Caso 3: NORMAL
     else:
-        status = "🟢 NORMAL"
-        recomendacao = "Motor operando dentro dos padrões ideais. Nenhuma ação necessária."
-        roi = "Produção otimizada. Zero custos adicionais no momento."
+        res = {
+            "status": "🟢 NORMAL",
+            "risco": prob_ia,
+            "causa": "Parâmetros operacionais dentro da normalidade (ISO 10816).",
+            "recomenda": "Motor operando conforme o planejado. Nenhuma ação necessária.",
+            "roi": "Disponibilidade de ativo em 100%. Zero custos adicionais."
+        }
 
-    # --- SALVANDO NO BANCO DE DADOS ---
+    # 3. Salvar no Banco
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO analises (temperatura, vibracao, risco, status)
-        VALUES (?, ?, ?, ?)
-    ''', (dados.temperatura_c, dados.vibracao_mms, probabilidade, status))
+    cursor.execute('INSERT INTO analises (temperatura, vibracao, risco, status) VALUES (?, ?, ?, ?)',
+                   (t, v, res["risco"], res["status"]))
     conn.commit()
     conn.close()
         
     return {
-        "risco_falha_percentagem": round(probabilidade, 1),
-        "status": status,
-        "recomendacao": recomendacao,
-        "roi_estimado": roi,
-        "causa_raiz": causa_raiz
+        "risco_falha_percentagem": round(res["risco"], 1),
+        "status": res["status"],
+        "recomendacao": res["recomenda"],
+        "roi_estimado": res["roi"],
+        "causa_raiz": res["causa"]
     }
 
-# --- NOVO ENDPOINT: PEGAR O HISTÓRICO ---
 @app.get("/historico")
 def pegar_historico():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Pega as últimas 10 análises
     cursor.execute('SELECT temperatura, vibracao, risco, status, data_hora FROM analises ORDER BY id DESC LIMIT 10')
     linhas = cursor.fetchall()
     conn.close()
-    
-    historico = []
-    for linha in linhas:
-        historico.append({
-            "temperatura": linha[0],
-            "vibracao": linha[1],
-            "risco": round(linha[2], 1),
-            "status": linha[3],
-            "hora": linha[4]
-        })
-    return {"historico": historico}
+    return {"historico": [{"temperatura": l[0], "vibracao": l[1], "risco": l[2], "status": l[3], "hora": l[4]} for l in linhas]}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
